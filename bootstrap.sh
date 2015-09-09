@@ -11,11 +11,19 @@ function log_fail() {
   exit 1
 }
 
-verify_paas_name() {
-  if type "$1" > /dev/null 2>&1; then
-    return 1
-  else
-    return 0
+function get_arch_info() {
+  ARCH=`arch`
+  echo "$ARCH"
+}
+
+function verify_paas_name() {
+  if [[ -z $1 ]]; then
+    echo "Please specify your paas name"
+    exit 1
+  fi
+  if command -v $1; then
+    echo "$1 conflicts with an existing command. Please specify other paas name"
+    exit 1
   fi
 }
 
@@ -35,20 +43,43 @@ function create_paas_user() {
 
 function setup_docker_compose() {
   logit "Setting up docker compose ..."
-  curl -L https://github.com/docker/compose/releases/download/1.3.2/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+  curl -L https://github.com/docker/compose/releases/download/1.4.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
   chmod +x /usr/local/bin/docker-compose
 }
 
 function setup_consul() {
   logit "Setting up consul ..."
-  docker pull progrium/consul
-  docker run -d -p 8400:8400 -p 8500:8500 -p 8600:53/udp --restart=always --name consul -h consul progrium/consul -server -advertise $DOCKER_IP -bootstrap -ui-dir /ui
+  case "$1" in
+    x86_64)
+      docker pull progrium/consul
+      docker run -d -p 8400:8400 -p 8500:8500 -p 8600:53/udp --restart=always --name consul -h consul progrium/consul -server -advertise $DOCKER_IP -bootstrap -ui-dir /ui
+      ;;
+    armv7l)
+      docker pull nimblestratus/rpi-consul
+      docker run -d -p 8400:8400 -p 8500:8500 -p 8600:53/udp --restart=always --name consul -h consul nimblestratus/rpi-consul -server -advertise $DOCKER_IP -bootstrap -ui-dir /ui
+      ;;
+    *)
+      log_fail "Unsupported platform: $ARCH"
+      ;;
+esac
+
 }
 
 function setup_registrator() {
   logit "Setting up registrator ..."
-  docker pull gliderlabs/registrator
-  docker run -d -v /var/run/docker.sock:/tmp/docker.sock --restart=always --name registrator -h registrator gliderlabs/registrator consul://$DOCKER_IP:8500
+  case "$1" in
+    x86_64)
+      docker pull gliderlabs/registrator
+      docker run -d -v /var/run/docker.sock:/tmp/docker.sock --restart=always --name registrator -h registrator gliderlabs/registrator consul://$DOCKER_IP:8500
+      ;;
+    armv7l)
+      docker pull nimblestratus/rpi-registrator
+      docker run -d -v /var/run/docker.sock:/tmp/docker.sock --restart=always --name registrator -h registrator nimblestratus/rpi-registrator consul://$DOCKER_IP:8500
+      ;;
+    *)
+      log_fail "Unsupported platform: $ARCH"
+      ;;
+  esac
 }
 
 function setup_nginx() {
@@ -64,8 +95,22 @@ consul-template -consul=$CONSUL_URL -template="/templates/service.ctmpl:/etc/ngi
 EOF
   chmod +x ./start.sh
 
-  cat << "EOF" > ./Dockerfile
-FROM nginx
+case "$1" in
+  x86_64)
+    PARENT="nginx"
+    ARCH="amd64"
+    ;;
+  armv7l)
+    PARENT="akkerman/rpi-nginx"
+    ARCH="arm"
+    ;;
+  *)
+    log_fail "Unsupported platform: $ARCH"
+    ;;
+esac
+
+  cat << EOF > ./Dockerfile
+FROM $PARENT
  
 ENTRYPOINT ["/bin/start.sh"]
 EXPOSE 80
@@ -74,8 +119,8 @@ ENV CONSUL_URL consul:8500
  
 ADD start.sh /bin/start.sh
 
-ADD https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz /usr/bin/
-RUN tar -C /usr/local/bin --strip-components 1 -zxf /usr/bin/consul-template_0.10.0_linux_amd64.tar.gz
+ADD https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_${ARCH}.tar.gz /usr/bin/
+RUN tar -C /usr/local/bin --strip-components 1 -zxf /usr/bin/consul-template_0.10.0_linux_${ARCH}.tar.gz
 EOF
 
   cat << EOF > ./service.ctmpl
@@ -91,14 +136,13 @@ server {
   }{{end}}
 }
 EOF
-
   docker build -t $PAAS_USER/nginx-loadbalancer .
   docker run -p 80:80 -d --restart=always --name nginx --volume $PAAS_HOME/nginx/service.ctmpl:/templates/service.ctmpl --link consul:consul $PAAS_USER/nginx-loadbalancer
 }
 
 function setup_gitreceive() {
   su -c "ssh-keygen -f $HOME/.ssh/id_rsa -t rsa -q -N ''" $SUDO_USER
-  su -c "ssh-keygen -f $PAAS_HOME/.ssh/id_rsa -t rsa -q -N ''" $PAAS_USER	# add
+  su -c "ssh-keygen -f $PAAS_HOME/.ssh/id_rsa -t rsa -q -N ''" $PAAS_USER
   wget -O /tmp/gitreceive.original https://raw.github.com/progrium/gitreceive/master/gitreceive
   cat /tmp/gitreceive.original | sed -e "s/pre-receive/post-receive/g" > /tmp/gitreceive
 
@@ -109,8 +153,7 @@ function setup_gitreceive() {
   gitreceive init
   gpasswd -a $PAAS_USER docker
   cat $HOME/.ssh/id_rsa.pub | gitreceive upload-key $SUDO_USER
-  cat $PAAS_HOME/.ssh/id_rsa.pub | gitreceive upload-key $PAAS_USER	# add
-  #mkdir -p $PAAS_HOME/app
+  cat $PAAS_HOME/.ssh/id_rsa.pub | gitreceive upload-key $PAAS_USER
 
   cat << EOF > $PAAS_HOME/.ssh/config
 Host localhost
@@ -153,23 +196,13 @@ web:
 EOF
   chmod +x $PAAS_HOME/app/\$1/docker-compose.yml
 
-#export CMD=\$(cat Procfile | awk '/^web:/' | awk '{for(i=2;i<NF;i++){printf("%s ",\$i)}print \$NF}')
-
-#if [[ -f "Dockerfile" ]]; then
-#  echo "missing Dockerfile..."
-#  exit 1
-#fi
-
 echo "-----> Building Docker image ..."
 docker build -t $PAAS_USER/\$1 .
 
 echo "-----> Removing existing Docker image ..."
-#container_id=\$(docker ps | grep paas/\$1 | awk '{print \$1;}')
-#docker rm -f \$container_id
 docker-compose stop
 
 echo "-----> Launching \$1 ..."
-#docker run -d -p \$PORT $PAAS_USER/\$1
 docker-compose up -d
 EOF2
 
@@ -201,22 +234,15 @@ EOF2
 
 # main
 
-if [[ -z $1 ]]; then
-  echo "Please specify your paas name"
-  exit 1
-fi
-
-if command -v $1; then
-  echo "$1 conflicts with an existing command. Please specify other paas name"
-  exit 1
-fi
-
+verify_paas_name $1
+ARCH=`get_arch_info`
 set_env $1
 create_paas_user
-setup_docker_compose
-setup_consul
-setup_registrator
-setup_nginx
+if [ "$ARCH" = "x86_64" ]; then
+  setup_docker_compose
+fi
+setup_consul $ARCH
+setup_registrator $ARCH
+setup_nginx $ARCH
 setup_gitreceive
 install_client
-
