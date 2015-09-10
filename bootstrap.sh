@@ -61,8 +61,7 @@ function setup_consul() {
     *)
       log_fail "Unsupported platform: $ARCH"
       ;;
-esac
-
+  esac
 }
 
 function setup_registrator() {
@@ -95,34 +94,6 @@ consul-template -consul=$CONSUL_URL -template="/templates/service.ctmpl:/etc/ngi
 EOF
   chmod +x ./start.sh
 
-case "$1" in
-  x86_64)
-    PARENT="nginx"
-    ARCH="amd64"
-    ;;
-  armv7l)
-    PARENT="akkerman/rpi-nginx"
-    ARCH="arm"
-    ;;
-  *)
-    log_fail "Unsupported platform: $ARCH"
-    ;;
-esac
-
-  cat << EOF > ./Dockerfile
-FROM $PARENT
- 
-ENTRYPOINT ["/bin/start.sh"]
-EXPOSE 80
-VOLUME /templates
-ENV CONSUL_URL consul:8500
- 
-ADD start.sh /bin/start.sh
-
-ADD https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_${ARCH}.tar.gz /usr/bin/
-RUN tar -C /usr/local/bin --strip-components 1 -zxf /usr/bin/consul-template_0.10.0_linux_${ARCH}.tar.gz
-EOF
-
   cat << EOF > ./service.ctmpl
 {{range services}}upstream {{.Name}} {
   {{range service .Name}}server $DOCKER_IP:{{.Port}};
@@ -136,8 +107,38 @@ server {
   }{{end}}
 }
 EOF
+
+  case "$1" in
+    x86_64)
+      PARENT="nginx"
+      ARCH="amd64"
+      ;;
+    armv7l)
+      PARENT="akkerman/rpi-nginx"
+      ARCH="arm"
+      ;;
+    *)
+      log_fail "Unsupported platform: $ARCH"
+      ;;
+  esac
+
+  cat << EOF > ./Dockerfile
+FROM $PARENT
+ 
+ENTRYPOINT ["/bin/start.sh"]
+EXPOSE 80
+VOLUME /templates
+ENV CONSUL_URL consul:8500
+ 
+ADD start.sh /bin/start.sh
+ADD service.ctmpl /templates/service.ctmpl
+
+ADD https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_${ARCH}.tar.gz /usr/bin/
+RUN tar -C /usr/local/bin --strip-components 1 -zxf /usr/bin/consul-template_0.10.0_linux_${ARCH}.tar.gz
+EOF
+
   docker build -t $PAAS_USER/nginx-loadbalancer .
-  docker run -p 80:80 -d --restart=always --name nginx --volume $PAAS_HOME/nginx/service.ctmpl:/templates/service.ctmpl --link consul:consul $PAAS_USER/nginx-loadbalancer
+  docker run -p 80:80 -d --restart=always --name nginx --link consul:consul $PAAS_USER/nginx-loadbalancer
 }
 
 function setup_gitreceive() {
