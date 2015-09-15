@@ -250,6 +250,15 @@ case "\$1" in
   scale)
     docker-compose -f $PAAS_HOME/app/\$APP/docker-compose.yml scale "\$2" #>/dev/null 2>&1
     ;;
+  restart)
+    docker-compose -f /home/teroku/app/\$APP/docker-compose.yml restart
+    ;;
+  ps)
+    docker-compose -f /home/teroku/app/\$APP/docker-compose.yml ps
+    ;;
+  logs)
+    docker-compose -f /home/teroku/app/\$APP/docker-compose.yml logs
+    ;;
   *)
     echo "Usage: $PAAS_USER <command>"
     ;;
