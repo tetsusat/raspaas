@@ -16,6 +16,11 @@ function get_arch_info() {
   echo "$ARCH"
 }
 
+function get_release_info() {
+  RELEASE=`uname -r`
+  echo "$RELEASE"
+}
+
 function verify_paas_name() {
   if [[ -z $1 ]]; then
     echo "Please specify your paas name"
@@ -43,8 +48,19 @@ function create_paas_user() {
 
 function setup_docker_compose() {
   logit "Setting up docker compose ..."
-  curl -L https://github.com/docker/compose/releases/download/1.4.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
-  chmod +x /usr/local/bin/docker-compose
+  case "$1" in
+    x86_64)
+      curl -L https://github.com/docker/compose/releases/download/1.4.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+      chmod +x /usr/local/bin/docker-compose
+      ;;
+    hypriotos)
+      curl -L https://github.com/hypriot/compose/releases/download/1.2.0-raspbian/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+      chmod +x /usr/local/bin/docker-compose
+      ;;
+    *)
+      log_fail "Unknown architecture/release: $1"
+      ;;
+  esac
 }
 
 function setup_consul() {
@@ -142,8 +158,18 @@ EOF
 }
 
 function setup_gitreceive() {
-  su -c "ssh-keygen -f $HOME/.ssh/id_rsa -t rsa -q -N ''" $SUDO_USER
+  SUDO_USER_HOME=/home/$SUDO_USER
+  
+  if [ ! -d $SUDO_USER_HOME/.ssh ]; then
+    su -c "mkdir $SUDO_USER_HOME/.ssh" $SUDO_USER
+  fi
+  su -c "ssh-keygen -f $SUDO_USER_HOME/.ssh/id_rsa -t rsa -q -N ''" $SUDO_USER
+
+  if [ ! -d $PAAS_HOME/.ssh ]; then
+    su -c "mkdir $PAAS_HOME/.ssh" $PAAS_USER
+  fi
   su -c "ssh-keygen -f $PAAS_HOME/.ssh/id_rsa -t rsa -q -N ''" $PAAS_USER
+
   wget -O /tmp/gitreceive.original https://raw.github.com/progrium/gitreceive/master/gitreceive
   cat /tmp/gitreceive.original | sed -e "s/pre-receive/post-receive/g" > /tmp/gitreceive
 
@@ -153,7 +179,7 @@ function setup_gitreceive() {
   export GITUSER=$PAAS_USER
   gitreceive init
   gpasswd -a $PAAS_USER docker
-  cat $HOME/.ssh/id_rsa.pub | gitreceive upload-key $SUDO_USER
+  cat $SUDO_USER_HOME/.ssh/id_rsa.pub | gitreceive upload-key $SUDO_USER
   cat $PAAS_HOME/.ssh/id_rsa.pub | gitreceive upload-key $PAAS_USER
 
   cat << EOF > $PAAS_HOME/.ssh/config
@@ -237,10 +263,13 @@ EOF2
 
 verify_paas_name $1
 ARCH=`get_arch_info`
+RELEASE=`get_release_info`
 set_env $1
 create_paas_user
 if [ "$ARCH" = "x86_64" ]; then
-  setup_docker_compose
+  setup_docker_compose $ARCH
+elif [ "$ARCH" = "armv7l" -a $(echo $RELEASE | grep -e 'hypriotos') ]; then
+  setup_docker_compose 'hypriotos'
 fi
 setup_consul $ARCH
 setup_registrator $ARCH
