@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash -xe
 
 function logit() {
   TIMESTAMP=$(date -u +'%m/%d %H:%M:%S')
@@ -192,15 +192,29 @@ EOF
 
 #source /home/\$3/\$1/.paas_env
 
+function log_fail() {
+  echo "\$@" 1>&2
+  exit 1
+}
+
 function get_dockerfile_exposed_port() {
   DOCKERFILE_PORT=\$(grep "^EXPOSE \+[[:digit:]]\+\(\/tcp\)\? *$" \$1 | head -1 | sed 's/EXPOSE \+\([[:digit:]]\+\)\(\/tcp\)\?.*/\1/' || true)
   echo "\$DOCKERFILE_PORT"
+}
+
+function get_procfile_cmd(){
+  CMD=\$(cat Procfile | awk '/^web:/' | awk '{for(i=2;i<NF;i++){printf("%s ",$i)}print \$NF}')
+  echo "\$CMD"
 }
 
 #cp -R /home/\$3/\$1/ $PAAS_HOME/app/
 #cd $PAAS_HOME/app/\$1
 
 unset GIT_DIR
+
+if [ -e $PAAS_HOME/app/\$1/Dockerfile ]; then
+  rm $PAAS_HOME/app/\$1/Dockerfile
+fi
 
 if [ -e $PAAS_HOME/app/\$1/.git ]; then
   echo "git pull!!!"
@@ -213,23 +227,49 @@ else
   cd $PAAS_HOME/app/\$1
 fi
 
-PORT=\$(get_dockerfile_exposed_port Dockerfile)
+if [ -e $PAAS_HOME/app/\$1/Dockerfile ]; then
+  echo "-----> Dockerfile detected"
+  PORT=\$(get_dockerfile_exposed_port Dockerfile)
 
-cat << EOF > $PAAS_HOME/app/\$1/docker-compose.yml
+  cat << EOF > $PAAS_HOME/app/\$1/docker-compose.yml
 web:
   image: $PAAS_USER/\$1
   ports:
     - \$PORT
 EOF
-  chmod +x $PAAS_HOME/app/\$1/docker-compose.yml
+else # buildpack-like
+  echo "-----> Dockerfile not detected, trying Buildpack-like"
+  files="$PAAS_HOME/buildpack-like/*"
+  dirary=()
+  for filepath in \$files; do
+    if [ -d \$filepath ] ; then
+      dirary+=("\$filepath")
+    fi
+  done
+
+  for i in \${dirary[@]}; do
+    lang=\$(echo \$i | awk -F '/' '{print \$NF}')
+    found=\$($PAAS_HOME/buildpack-like/\$lang/bin/detect $PAAS_HOME/app/\$1)
+    if [ \$? = 0 ] ; then
+      echo "-----> \$found app detected"
+      $PAAS_HOME/buildpack-like/\$lang/bin/compile $PAAS_HOME/app/\$1 $PAAS_USER
+      if [ \$? = 1 ] ; then
+        log_fail "Buildpack-like fails in compile"
+      fi
+      break
+    fi
+  done
+fi
+
+chmod +x $PAAS_HOME/app/\$1/docker-compose.yml
 
 echo "-----> Building Docker image ..."
 docker build -t $PAAS_USER/\$1 .
 
-echo "-----> Removing existing Docker image ..."
+echo "-----> Stoping existing Docker image ..."
 docker-compose stop
 
-echo "-----> Launching \$1 ..."
+echo "-----> Deploying \$1 to $PAAS_USER ..."
 docker-compose up -d
 EOF2
 
@@ -268,6 +308,12 @@ EOF2
   chmod +x /usr/local/bin/$PAAS_USER
 }
 
+function install_buildpack_like() {
+  git clone https://github.com/tetsusat/buildpack-like.git $PAAS_HOME/buildpack-like
+  chmod +x $PAAS_HOME/buildpack-like/*/bin/detect
+  chmod +x $PAAS_HOME/buildpack-like/*/bin/compile
+}
+
 # main
 
 verify_paas_name $1
@@ -285,3 +331,4 @@ setup_registrator $ARCH
 setup_nginx $ARCH
 setup_gitreceive
 install_client
+install_buildpack_like
