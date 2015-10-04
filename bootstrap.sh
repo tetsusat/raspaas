@@ -1,4 +1,4 @@
-#!/bin/bash -xe
+#!/bin/bash -e
 
 function logit() {
   TIMESTAMP=$(date -u +'%m/%d %H:%M:%S')
