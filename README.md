@@ -11,6 +11,15 @@ Raspaas is tested *insufficiently* on the following environments.
 - [Hypriot Docker Image for Raspberry Pi(Version 0.4)](http://blog.hypriot.com/downloads/)
 - [Scaleway](https://www.scaleway.com/)
 
+## Deployment Process
+
+Raspaas supports two different ways of deploying applications:
+
+1. Dockerfile
+2. [Buildpack-like](https://github.com/tetsusat/buildpack-like)
+
+\* Only Docerfile deployment is supported on ARMv7 platform at this moment.
+
 ## Installing
 
 To install Raspaas, you can run the following commands as a user that has access to `sudo`.
@@ -28,6 +37,12 @@ Clone the git repo.
 
 ```sh
 $ git clone https://github.com/tetsusat/ruby-sample.git
+```
+
+For Dockerfile deployment, clone the git repo below instead.
+
+```sh
+$ git clone https://github.com/tetsusat/ruby-sample-dockerfile.git ruby-sample
 ```
 
 Inside the cloned repo, create your paas application.
