@@ -1,7 +1,7 @@
 # Raspaas
 
 Raspaas is yet another Heroku inspired docker PaaS.</br>
-It can run not only on x86_64 but also on ARMv7 (i.e. Raspberry Pi 2 and Scaleway).
+It can run not only on `x86_64` but also on `ARMv7` (i.e. Raspberry Pi 2 and Scaleway).
 
 ## Requirements
 
@@ -11,14 +11,14 @@ Raspaas is tested *insufficiently* on the following environments.
 - [Hypriot Docker Image for Raspberry Pi(Version 0.4)](http://blog.hypriot.com/downloads/)
 - [Scaleway](https://www.scaleway.com/)
 
-## Deployment Process
+## Deployment options
 
 Raspaas supports two different ways of deploying applications:
 
 1. Dockerfile
 2. [Buildpack-like](https://github.com/tetsusat/buildpack-like)
 
-\* Only Docerfile deployment is supported on ARMv7 platform at this moment.
+\* On ARMv7 platform, Buildpack-like deployment is not supported at this moment.
 
 ## Installing
 
