@@ -240,15 +240,17 @@ EOF
 else # buildpack-like
   echo "-----> Dockerfile not detected, trying Buildpack-like"
   files="$PAAS_HOME/buildpack-like/*"
-  dirary=()
+  langs=()
   for filepath in \$files; do
     if [ -d \$filepath ] ; then
-      dirary+=("\$filepath")
+      lang=\$(echo \$filepath | awk -F '/' '{print \$NF}')
+      if [ \$lang != "dockerfiles" ] ; then
+        langs+=("\$lang")
+      fi
     fi
   done
 
-  for i in \${dirary[@]}; do
-    lang=\$(echo \$i | awk -F '/' '{print \$NF}')
+  for lang in \${langs[@]}; do
     found=\$($PAAS_HOME/buildpack-like/\$lang/bin/detect $PAAS_HOME/app/\$1)
     if [ \$? = 0 ] ; then
       echo "-----> \$found app detected"
