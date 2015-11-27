@@ -8,7 +8,7 @@ It can run not only on `x86_64` but also on `ARMv7` (i.e. Raspberry Pi 2 and Sca
 Raspaas is tested *insufficiently* on the following environments.
 
 - Ubuntu 14.04 (x86_64)
-- [Hypriot Docker Image for Raspberry Pi(Version 0.4)](http://blog.hypriot.com/downloads/)
+- [Hypriot Docker Image for Raspberry Pi(Version 0.6.1)](http://blog.hypriot.com/downloads/)
 - [Scaleway](https://www.scaleway.com/)
 
 ## Deployment options
